@@ -24,12 +24,14 @@ from TrackG import (
 
 
 # Modify these paths to match your local environment before running
-# DATA_DIR = Path("/nfs/turbo/umms-congma1/users/junfeng/Mouse_data/graph matrix/3454_Lkb1_All_all_genes")
-# OUTPUT_DIR = Path("/home/qinglanm/congma_project/4D_singlecell_atlas_protein_TF_paper/KPtracer/Final_results")
-DATA_DIR = Path("../data/3454_Lkb1_All_all_genes")   # tutorial default
-OUTPUT_DIR = Path("../results")                      # tutorial default
+DATA_DIR = Path("/nfs/turbo/umms-congma1/users/junfeng/Mouse_data/graph matrix/3454_Lkb1_All_all_genes")
+OUTPUT_DIR = Path("/home/qinglanm/congma_project/4D_singlecell_atlas_protein_TF_paper/KPtracer/Final_results/tutorial_output")  # tutorial default
+# DATA_DIR = Path("../data/3454_Lkb1_All_all_genes")   # tutorial default
+# OUTPUT_DIR = Path("../results")                      # tutorial default
 
 # Kernel order defines the K column blocks and the A row blocks
+
+# Two kernel names corresponding to the two kernel matrices in the KP-Tracer dataset: phylogenetic kernel and sub-tumor kernel. The order of these names determines the order of the blocks in the concatenated kernel matrix K.
 KERNEL_NAMES = np.array(["Sigma_phylo", "Sigma_subtumor"])
 KERNEL_FILES = {
     "Sigma_phylo": "3454_Lkb1_All_Sigma_phylo_lca_scaled.pkl",
