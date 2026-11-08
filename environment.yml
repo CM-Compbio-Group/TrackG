@@ -1,0 +1,16 @@
+name: trackg
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - seaborn
+  - anndata
+  - biopython
+  - networkx
+  - threadpoolctl
+  - jupyterlab
+  - ipykernel
