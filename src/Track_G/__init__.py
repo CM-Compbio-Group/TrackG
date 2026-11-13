@@ -14,8 +14,11 @@ from .parallel_analysis import (NULLS, PAResult, run_parallel_analysis, plot_par
                                 expression_pa)
 from .CCA import (fit_witten_nonnegative_cca, nonnegative_soft_threshold, random_feasible_unit_vector,
                   witten_c_from_legacy_delta, witten_nonnegative_update, build_kernel_matrix,
-                  compute_gene_weights_all_components, gene_kernel_scores, save_pa_cca_outputs)
+                  compute_gene_weights_all_components, gene_kernel_scores, save_pa_cca_outputs,
+                  summarize_cca)
 from .gene_filtering import filter_genes, filter_and_standardize_expression
+from .preprocess import prepare_for_cca
+from .kernel_construction import kernel_from_newick, kernel_from_categorical
 
 __all__ = [
     # Parallel analysis
@@ -24,7 +27,11 @@ __all__ = [
     # CCA
     "fit_witten_nonnegative_cca", "nonnegative_soft_threshold", "random_feasible_unit_vector",
     "witten_c_from_legacy_delta", "witten_nonnegative_update", "build_kernel_matrix",
-    "compute_gene_weights_all_components", "gene_kernel_scores", "save_pa_cca_outputs",
+    "compute_gene_weights_all_components", "gene_kernel_scores", "save_pa_cca_outputs", "summarize_cca",
     # Gene filtering
     "filter_genes", "filter_and_standardize_expression",
+    # Data preprocessing
+    "prepare_for_cca",
+    # Kernel construction
+    "kernel_from_newick", "kernel_from_categorical",
 ]
