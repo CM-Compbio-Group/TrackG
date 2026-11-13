@@ -834,7 +834,7 @@ def compute_gene_weights_all_components(
 
 
 def gene_kernel_scores(W2_matrix: np.ndarray, all_scores: np.ndarray, gene_names: Optional[Sequence[str]] = None,
-                       kernel_names: Optional[Sequence[str]] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+                       kernel_names: Optional[Sequence[str]] = None, component_names: Optional[Sequence[str]] = None,) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Relatedness of each component and each gene to each kernel (cellular attribute).
 
     p[k, j] = ||alpha_j^(k)||_2 / sum_l ||alpha_j^(l)||_2   (``all_scores`` = A-block norms, kernels x components)
@@ -845,7 +845,8 @@ def gene_kernel_scores(W2_matrix: np.ndarray, all_scores: np.ndarray, gene_names
     col = S.sum(0, keepdims=True)
     P = np.divide(S, col, out=np.zeros_like(S), where=col > 0)          # components with A = 0 get p = 0
     kernels = [str(k) for k in kernel_names] if kernel_names is not None else [f"K{k}" for k in range(S.shape[0])]
-    p = pd.DataFrame(P, index=kernels, columns=[f"C{j}" for j in range(S.shape[1])])
+    components = list(component_names) if component_names is not None else [f"C_{j}" for j in range(S.shape[1])]
+    p = pd.DataFrame(P, index=kernels, columns=components)
     s = pd.DataFrame(np.asarray(W2_matrix, dtype=float) @ P.T, index=gene_names, columns=kernels)
     return p, s
 
@@ -912,21 +913,16 @@ def save_pa_cca_outputs(path, result: Dict[str, Any], data, pa: Optional[PAResul
     )
     if pa is not None:
         out["pa_summary"] = pa.summary
-        out["pa_spectrum"] = pd.concat(
-            [
-                pd.DataFrame({
-                    "null": name,
-                    "rank": np.arange(1, len(r["singular_values"]) + 1),
-                    "singular_value": r["singular_values"],
-                    "threshold": r["threshold"],
-                    "null_median": np.median(r["null_singular_values"], axis=0),
-                    "above_threshold": r["above_threshold"],
-                })
-                for name, r in pa.nulls.items()
-            ],
-            ignore_index=True,
-        )
-        run_settings["pa"] = dict(pa.settings, J=pa.J, J_selected=pa.J_selected)
+        r = pa.result
+        out["pa_spectrum"] = pd.DataFrame({
+            "null": pa.null,
+            "rank": np.arange(1, len(r["singular_values"]) + 1),
+            "singular_value": r["singular_values"],
+            "threshold": r["threshold"],
+            "null_median": np.median(r["null_singular_values"], axis=0),
+            "above_threshold": r["above_threshold"],
+        })
+        run_settings["pa"] = dict(pa.settings, J=pa.J)
     if settings:
         run_settings["cca"] = dict(settings)
     out["settings"] = run_settings
@@ -943,3 +939,83 @@ def save_pa_cca_outputs(path, result: Dict[str, Any], data, pa: Optional[PAResul
 
     pd.to_pickle(out, path)
     return path
+
+
+def summarize_cca(
+    result: dict,
+    data: dict,
+    top_n: int | None = None,
+    w_threshold: float = 1e-4,
+) -> dict:
+    """Collect all interpretable CCA outputs into one named dictionary.
+
+    Parameters
+    ----------
+    result : dict returned by fit_witten_nonnegative_cca.
+    data   : dict returned by prepare_for_cca (needs valid_genes, KERNEL_NAMES).
+    top_n  : number of top genes to return per component, ranked by W descending.
+             If None (default), return all genes with W > w_threshold.
+    w_threshold : minimum W to include a gene in top_genes (default 1e-4).
+
+    Returns
+    -------
+    dict with keys:
+        latent_component_expression : DataFrame (n_cells, J), latent component expression K @ A.
+        gene_component_expression   : DataFrame (n_cells, J), gene component expression X @ W2.
+        kernel_attr : DataFrame (n_kernels, J), kernel attribution per component
+                      (columns sum to 1).
+        gene_kernel : DataFrame (n_genes, n_kernels), gene-kernel association score.
+        top_genes   : dict mapping component name -> DataFrame of top genes with
+                      columns [gene, W, rank], sorted by W descending.
+        diagnostics : cca_diagnostics DataFrame from the fit.
+    """
+    kernel_names = [str(k) for k in data["KERNEL_NAMES"]]
+    valid_genes = list(data["valid_genes"])
+    J = result["W2_matrix"].shape[1]
+    components = [f"C_{j}" for j in range(J)]
+
+    # latent component expression and gene component expression
+    latent_component_expression = pd.DataFrame(
+        result["U_score_matrix"],
+        index=data["cell_names"],
+        columns=components,
+    )
+    gene_component_expression = pd.DataFrame(
+        result["V_score_matrix"],
+        index=data["cell_names"],
+        columns=components,
+    )
+
+    # kernel attribution and gene-kernel scores
+    kernel_attr, gene_kernel = gene_kernel_scores(
+        result["W2_matrix"],
+        result["all_scores"],
+        gene_names=valid_genes,
+        kernel_names=kernel_names,
+        component_names=components,
+    )
+    gene_kernel.index = pd.Index(valid_genes, name="gene")
+
+    # top genes per component, ranked by W descending
+    W2 = result["W2_matrix"]
+    top_genes = {}
+    for j, comp in enumerate(components):
+        w_vec = W2[:, j]
+        order = np.argsort(w_vec)[::-1]
+        genes_sorted = [(valid_genes[i], float(w_vec[i])) for i in order
+                        if float(w_vec[i]) > w_threshold]
+        if top_n is not None:
+            genes_sorted = genes_sorted[:top_n]
+        top_genes[comp] = pd.DataFrame(
+            [(g, w, rank + 1) for rank, (g, w) in enumerate(genes_sorted)],
+            columns=["gene", "W", "rank"],
+        )
+
+    return dict(
+        latent_component_expression=latent_component_expression,
+        gene_component_expression=gene_component_expression,
+        kernel_attr=kernel_attr,
+        gene_kernel=gene_kernel,
+        top_genes=top_genes,
+        diagnostics=result["cca_diagnostics"],
+    )
