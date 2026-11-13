@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Track-G tutorial outputs (figures, tables, fit caches)
+tutorial/results/

@@ -1,17 +1,18 @@
 """gene_filtering.py
-Gene filtering utility for KPTracer analyses.
+Gene filtering and standardization of a cells x genes log-expression table.
 
 Usage
 -----
->>> from gene_filtering import filter_genes
+>>> from Track_G import filter_genes, filter_and_standardize_expression
 >>> valid_genes, log_exp_filtered, gene_frac_expr = filter_genes(log_exp)
 >>> valid_genes, log_exp_filtered, gene_frac_expr = filter_genes(log_exp, min_expr_frac=0.05, min_gene_std=1e-4)
+>>> expr = filter_and_standardize_expression(log_exp)        # expr["X2_np"]: standardized filtered genes
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 
 def filter_genes(
@@ -61,3 +62,19 @@ def filter_genes(
         print(f"Genes retained (std>{min_gene_std:.2g} & expr>{min_expr_frac*100:.1f}%): {len(valid_genes)}")
 
     return valid_genes, log_exp_filtered, gene_frac_expr
+
+
+def filter_and_standardize_expression(log_exp: pd.DataFrame, min_expr_frac: float = 0.01, min_gene_std: float = 1e-6) -> Dict[str, Any]:
+    """Gene filter + per-gene standardization of a cells x genes expression table."""
+    log_exp = log_exp.astype(float)
+
+    valid_genes, log_exp_filtered, gene_frac_expr = filter_genes(
+        log_exp, min_expr_frac=min_expr_frac, min_gene_std=min_gene_std
+    )
+
+    # Gene standardization (zero-mean, unit-variance across cells)
+    X_vals = log_exp_filtered.values
+    X2_np = (X_vals - X_vals.mean(axis=0)) / X_vals.std(axis=0)
+
+    return dict(X2_np=X2_np, log_exp_filtered=log_exp_filtered, valid_genes=valid_genes,
+                gene_frac_expr=gene_frac_expr)
