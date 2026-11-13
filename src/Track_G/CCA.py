@@ -961,7 +961,7 @@ def summarize_cca(
     -------
     dict with keys:
         latent_component_expression : DataFrame (n_cells, J), latent component expression K @ A.
-        gene_component_expression   : DataFrame (n_cells, J), gene component expression X @ W2.
+        observed_component_expression   : DataFrame (n_cells, J), gene component expression X @ W2.
         kernel_attr : DataFrame (n_kernels, J), kernel attribution per component
                       (columns sum to 1).
         gene_kernel : DataFrame (n_genes, n_kernels), gene-kernel association score.
@@ -980,7 +980,7 @@ def summarize_cca(
         index=data["cell_names"],
         columns=components,
     )
-    gene_component_expression = pd.DataFrame(
+    observed_component_expression = pd.DataFrame(
         result["V_score_matrix"],
         index=data["cell_names"],
         columns=components,
@@ -1013,7 +1013,7 @@ def summarize_cca(
 
     return dict(
         latent_component_expression=latent_component_expression,
-        gene_component_expression=gene_component_expression,
+        observed_component_expression=observed_component_expression,
         kernel_attr=kernel_attr,
         gene_kernel=gene_kernel,
         top_genes=top_genes,
