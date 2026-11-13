@@ -4,31 +4,25 @@
 The CCA decomposes the cross-covariance ``Y = K^T X``, where ``K = [K_1 ... K_m]`` (n x mn) is the
 concatenation of the (normalized) cell kernels and ``X`` (n x p) is the gene-standardized expression.
 PA compares the ordered singular values of ``Y`` with the same-order quantile of a permutation null
-and stops at the first failure (sequential Buja-Eyuboglu rule).  Three nulls are available:
+and stops at the first failure (sequential Buja-Eyuboglu rule).
 
-``"entrywise"`` (default selector)
-    Shuffle all ``mn * p`` entries of ``Y`` jointly.  This keeps the empirical distribution of the
-    entries (hence ``||Y||_F``) but removes all row/column structure, so the threshold is a nearly
-    flat noise floor (a random-matrix bulk edge).  Conservative stopping rule, not a test of
-    kernel-expression association.  KP-Tracer 3454_Lkb1_All: J = 12.
+Three nulls are available via the ``null`` argument:
+
+``"entrywise"`` (default)
+    Shuffle all entries of ``Y = K^T X`` jointly.  Conservative noise-floor stopping rule.
 ``"row_permute"``
-    Permute the cells (rows) of ``X`` with one permutation per replicate.  Keeps ``K K^T`` and the
-    gene-gene covariance; its threshold decays with the observed spectrum (the previous selector,
-    J = 9 on KP-Tracer, with 18 of the first 60 values above threshold).
+    Permute the cells (rows) of ``X``.  Keeps ``K K^T`` and gene-gene covariance.
 ``"expression"``
-    Permute every gene of ``X`` independently and compare the singular values of ``X`` itself
-    (Horn PA on the expression self-rank; comparison / upper bound, ignores the kernels).
-
-Every null draws from its own ``np.random.default_rng(seed)``, so the results do not depend on which
-nulls are run or in what order; they are identical to the inline notebook code they replace.
+    Permute every gene of ``X`` independently (Horn PA on expression self-rank; ignores kernels).
 
 Usage
 -----
 >>> from Track_G import run_parallel_analysis, plot_parallel_analysis
->>> pa = run_parallel_analysis(X2_np, K)          # entry-wise null decides J (capped at j_cap=20)
->>> pa.J                                          # number of components to fit
->>> pa.nulls["entrywise"], pa.nulls["row_permute"], pa.nulls["expression"]   # per-null results
->>> pa.summary                                    # one row per null
+>>> pa = run_parallel_analysis(X2_np, K)             # entrywise null by default
+>>> pa = run_parallel_analysis(X2_np, K, null="row_permute")   # users may configure other permutation e.g. row permutation if they have good reasons
+>>> pa.J                                             # number of components to fit
+>>> pa.result                                        # dict with singular_values, threshold, etc.
+>>> pa.summary                                       # one-row DataFrame
 >>> fig = plot_parallel_analysis(pa, path="parallel_analysis.png")
 
 Each per-null result is a dict with keys ``kind, singular_values, threshold, null_singular_values,
@@ -140,89 +134,83 @@ expression_pa = pa_expression
 class PAResult:
     """Output of run_parallel_analysis.  ``J`` is the number of components to fit."""
     J: int                                   # selected by `selector`, clipped to [1, j_cap]
-    selector: str                            # null that decides J
-    J_selected: int                          # uncapped choice of `selector`
     j_cap: Optional[int]
-    nulls: Dict[str, dict] = field(repr=False)
+    null: str
+    result: dict 
     summary: pd.DataFrame = field(repr=False)
     settings: dict = field(repr=False)
 
     def __repr__(self):
-        others = ", ".join(f"{k} {v['n_components']}" for k, v in self.nulls.items() if k != self.selector)
-        cap = f", capped from {self.J_selected}" if self.J != self.J_selected else ""
-        return f"PAResult(J={self.J} by {self.selector} null{cap}; other nulls: {others or 'none'})"
+        J_raw = self.result["n_components"]
+        cap = f", capped from {J_raw}" if self.J != J_raw else ""
+        return f"PAResult(J={self.J} by {self.null} null{cap})"
 
 
-def run_parallel_analysis(X_std, K, selector: str = "entrywise", nulls: Sequence[str] = NULLS,
+def run_parallel_analysis(X_std, K, null: str = "entrywise",
                           n_permutations: int = 1000, quantile: float = 0.95, max_components: int = 60,
                           seed: int = 1234, j_cap: Optional[int] = 20, verbose: bool = True) -> PAResult:
-    """Run PA with the requested nulls and choose J with `selector` (default: global entry-wise null).
+    """Run PA with one null distribution and return the selected J.
 
     Parameters
     ----------
     X_std : (n, p) gene-standardized expression.
     K : (n, m*n) concatenated, normalized kernels (the CCA input).
-    selector : null whose choice becomes ``J``; added to ``nulls`` if missing.
-    nulls : nulls to compute; pass ``("entrywise",)`` to skip the reference nulls and save time.
-    j_cap : upper bound on ``J`` (runtime guard); ``None`` for no cap.  ``J`` is also at least 1.
+    null : which null to use; one of "entrywise" (default), "row_permute", "expression".
+    j_cap : upper bound on ``J`` (runtime guard); ``None`` for no cap.  ``J`` is at least 1.
     """
-    nulls = list(dict.fromkeys(nulls))
-    if selector not in nulls:
-        nulls.insert(0, selector)
-    unknown = [k for k in nulls if k not in NULLS]
-    if unknown:
-        raise ValueError(f"unknown null(s) {unknown}; choose from {NULLS}")
     X_std = np.asarray(X_std, float)
     K = np.asarray(K, float)
     if K.shape[0] != X_std.shape[0]:
         raise ValueError(f"K has {K.shape[0]} rows but X has {X_std.shape[0]} cells")
     kw = dict(n_permutations=n_permutations, quantile=quantile, max_components=max_components, seed=seed)
+
+    if null not in NULLS:
+        raise ValueError(f"unknown null '{null}'; choose from {NULLS}")
     funcs = {"entrywise": lambda: pa_entrywise(X_std, K, **kw),
              "row_permute": lambda: pa_row_permute(X_std, K, **kw),
              "expression": lambda: pa_expression(X_std, **kw)}
-    results = {k: funcs[k]() for k in nulls}
+    result = funcs[null]()
 
-    J_selected = int(results[selector]["n_components"])
-    J = max(J_selected, 1) if j_cap is None else int(min(max(J_selected, 1), j_cap))
-    summary = pd.DataFrame([
-        {"null": k, "PA variant": DESCRIPTIONS[k] + (" [SELECTS J]" if k == selector else " [reference]"),
-         "selected_J": r["n_components"], "n_above_threshold": r["n_above"], "at_scan_bound": r["at_bound"]}
-        for k, r in results.items()])
-    settings = dict(selector=selector, nulls=list(results), j_cap=j_cap, **kw)
+    J_raw = int(result["n_components"])
+    J = max(J_raw, 1) if j_cap is None else int(min(max(J_raw, 1), j_cap))
+    summary = pd.DataFrame([{
+        "null": null,
+        "PA variant": DESCRIPTIONS[null],
+        "selected_J": result["n_components"],
+        "n_above_threshold": result["n_above"],
+        "at_scan_bound": result["at_bound"]
+    }])
+    settings = dict(null=null, j_cap=j_cap, **kw)
     if verbose:
-        others = " | ".join(f"{k} null: {r['n_components']}" for k, r in results.items() if k != selector)
-        print(f"PA ({selector} null) selects J = {J_selected}" + (f" | {others}" if others else ""))
-        if J != J_selected:
+        print(f"PA ({null} null) selects J = {J_raw}")
+        if J != J_raw:
             print(f"NOTE: J capped/raised to {J} (j_cap={j_cap}); raise j_cap to fit more.")
-    return PAResult(J=J, selector=selector, J_selected=J_selected, j_cap=j_cap,
-                    nulls=results, summary=summary, settings=settings)
+    return PAResult(J=J, j_cap=j_cap, null=null,
+                    result=result, summary=summary, settings=settings)
 
 
-def plot_parallel_analysis(pa: PAResult, nulls: Optional[Sequence[str]] = None, path=None):
+def plot_parallel_analysis(pa: PAResult, path=None):
     """One panel per null: observed spectrum, permutation threshold, null median and the selected J.
 
     The selector's panel comes first.  Returns the figure (and saves it if `path` is given).
     """
     import matplotlib.pyplot as plt
 
-    order = list(nulls) if nulls is not None else [pa.selector] + [k for k in pa.nulls if k != pa.selector]
-    fig, axes = plt.subplots(1, len(order), figsize=(7.3 * len(order), 4.6), constrained_layout=True,
-                             squeeze=False)
-    for ax, k in zip(axes[0], order):
-        r = pa.nulls[k]
-        v, t = np.asarray(r["singular_values"]), np.asarray(r["threshold"])
-        x = np.arange(1, len(v) + 1)
-        sel = r["n_components"]
-        ax.plot(x, v, "o-", color="#234F78", lw=1.8, ms=3.5, label="Observed")
-        ax.plot(x, t, "s--", color="#B55648", lw=1.4, ms=2.5, label=f"Permutation {r['quantile']:.0%} threshold")
-        ax.plot(x, np.median(np.asarray(r["null_singular_values"]), axis=0), color="#88939E", lw=1.1,
-                label="Null median")
-        ax.axvline(sel + 0.5, color="#288268", ls="--", lw=1.6, label=f"PA J = {sel}")
-        title = PLOT_TITLES[k] + (": selects #CCA components" if k == pa.selector else " (reference)")
-        ax.set(xlabel="Singular-value index", ylabel="Singular value", title=title)
-        ax.grid(axis="y", alpha=0.18)
-        ax.spines[["top", "right"]].set_visible(False)
-        ax.legend(frameon=False, fontsize=8)
+    fig, ax = plt.subplots(1, 1, figsize=(7.3, 4.6), constrained_layout=True)
+    r = pa.result
+    v, t = np.asarray(r["singular_values"]), np.asarray(r["threshold"])
+    x = np.arange(1, len(v) + 1)
+    sel = r["n_components"]
+    ax.plot(x, v, "o-", color="#234F78", lw=1.8, ms=3.5, label="Observed")        
+    ax.plot(x, t, "s--", color="#B55648", lw=1.4, ms=2.5, label=f"Permutation {r['quantile']:.0%} threshold")
+    ax.plot(x, np.median(np.asarray(r["null_singular_values"]), axis=0), color="#88939E", lw=1.1,
+            label="Null median")
+    ax.axvline(sel + 0.5, color="#288268", ls="--", lw=1.6, label=f"PA J = {sel}")
+    title = PLOT_TITLES[pa.null]
+    ax.set(xlabel="Singular-value index", ylabel="Singular value", title=title)
+    ax.grid(axis="y", alpha=0.18)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(frameon=False, fontsize=8)
     if path is not None:
         fig.savefig(path, dpi=200, bbox_inches="tight")
     return fig
