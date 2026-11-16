@@ -30,7 +30,7 @@ pip install jupyter jupyterlab ipykernel
 python -m ipykernel install --user --name trackg --display-name trackg
 ```
 
-`Track-G` is a Python package in `src/Track_G/` and needs no further installation: add `src/` to the Python path, as the tutorial notebooks do. Tested with Python 3.10, numpy 2.2, scipy 1.15, pandas 2.3, matplotlib 3.10, anndata 0.11, scanpy 1.11 and biopython 1.85.
+`Track-G` is a Python package in `src/Track_G/` and needs no further installation: add `src/` to the Python path, as the tutorial notebooks do.
 
 ## How to Use
 
@@ -59,20 +59,10 @@ res = summarize_cca(fit, data)                      # dict of labelled DataFrame
 ```
 `res["kernel_attr"]` is the relative relatedness $p_{kj}$ of every component to every attribute, `res["gene_kernel"]` the relatedness $s_{gk}$ of every gene to every attribute, `res["latent_component_expression"]` the latent component expression $KA$ of every cell, and `res["top_genes_by_kernel"]` the gene ranking of every attribute.
 
-## Repository structure
+## Software dependencies
 
-```
-src/Track_G/                the Track-G package
-    kernel_construction.py  kernels from a Newick tree, a categorical vector or continuous values
-    preprocess.py           prepare_for_cca: expression + kernels -> everything needed for PA and CCA
-    parallel_analysis.py    number of components J (permutation null on K^T X)
-    CCA.py                  nonnegative sparse multi-kernel CCA, kernel concatenation (K^1/2), summarize_cca, saving
-    gene_filtering.py       gene filter + per-gene standardization
-utils/                      wrappers of other methods (ALPINE, CoGAPS, Hotspot); not used by the tutorials
-tutorial/
-    data/kptracer/          raw KP-Tracer data of tumor family 3454_Lkb1_All (counts + lineage tree)
-    kptracer/               negative controls and figures of the KP-Tracer analysis
-    simulation/             simulated data and evaluation / figures of the simulation
-    kptracer.ipynb          Track-G on KP-Tracer
-    simulation.ipynb        Track-G on simulated data
-```
+Tested with Python 3.10 on Linux. The `Track-G` package uses:
+* numpy (2.2), scipy (1.15), pandas (2.3), biopython (1.85), matplotlib (3.10)
+
+The tutorials additionally use:
+* scanpy (1.11), anndata (0.11), seaborn (0.13), networkx (3.4), threadpoolctl (3.6)
