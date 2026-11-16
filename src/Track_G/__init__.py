@@ -2,12 +2,14 @@
 
 Modules
 -------
-parallel_analysis : choose the number of components J (permutation null on K^T X)
-CCA               : Witten nonnegative sparse multi-kernel CCA, kernel concatenation (K^1/2), gene scores, saving
-gene_filtering    : gene filter + per-gene standardization of the expression
+kernel_construction : kernels from a Newick tree, a categorical vector or continuous values
+preprocess          : prepare_for_cca, expression + kernels -> everything needed for PA and CCA
+parallel_analysis   : choose the number of components J (permutation null on K^T X)
+CCA                 : Witten nonnegative sparse multi-kernel CCA, kernel concatenation (K^1/2), summaries, saving
+gene_filtering      : gene filter + per-gene standardization of the expression
 
->>> from Track_G import (filter_and_standardize_expression, build_kernel_matrix, run_parallel_analysis,
-...                      fit_witten_nonnegative_cca, gene_kernel_scores)
+>>> from Track_G import (kernel_from_newick, kernel_from_categorical, prepare_for_cca, run_parallel_analysis,
+...                      fit_witten_nonnegative_cca, summarize_cca)
 """
 from .parallel_analysis import (NULLS, PAResult, run_parallel_analysis, plot_parallel_analysis, pa_entrywise,
                                 pa_row_permute, pa_expression, global_entrywise_pa, cross_covariance_pa,
@@ -18,7 +20,7 @@ from .CCA import (fit_witten_nonnegative_cca, nonnegative_soft_threshold, random
                   summarize_cca)
 from .gene_filtering import filter_genes, filter_and_standardize_expression
 from .preprocess import prepare_for_cca
-from .kernel_construction import kernel_from_newick, kernel_from_categorical
+from .kernel_construction import kernel_from_newick, kernel_from_categorical, kernel_from_continuous
 
 __all__ = [
     # Parallel analysis
@@ -33,5 +35,5 @@ __all__ = [
     # Data preprocessing
     "prepare_for_cca",
     # Kernel construction
-    "kernel_from_newick", "kernel_from_categorical",
+    "kernel_from_newick", "kernel_from_categorical", "kernel_from_continuous",
 ]

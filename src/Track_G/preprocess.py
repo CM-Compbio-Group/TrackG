@@ -24,18 +24,23 @@ def prepare_for_cca(
     ----------
     log_expr : (n, p) DataFrame of log1p-normalized gene expression (cells x genes).
     kernels : dict of (n, n) kernel matrices, e.g. from kernel_from_newick, kernel_from_categorical or kernel_from_continuous. The column-block order of K follows the dict's insertion order.
+              The rows / columns of every kernel must follow the row (cell) order of ``log_expr``.
     min_expr_frac : keep genes expressed in more than this fraction of cells (default 0.01 = 1%).
     min_gene_std : minimum per-gene std to retain a gene; removes near-constant genes (default 1e-6).
     frobenius_normalize : divide each kernel by its Frobenius norm before concatenation (default False).
     use_sqrt : use the symmetric square root K^1/2 of each kernel (default True, as in Track-G).
+    cast_float32 : round the kernels to float32 first (default False); True reproduces the paper's
+                   KP-Tracer inputs, whose kernels were stored as float32.
 
     Returns
     -------
     dict with keys:
         X2_np            : (n, q) float64 array, filtered and standardized expression.
         valid_genes      : list of retained gene names.
+        cell_names       : (n,) array of cell names (the index of ``log_expr``).
         K                : (n, m*n) concatenated kernel matrix, input to CCA.
-        kernels_for_cca  : dict of processed per-kernel matrices (after sqrt / Frobenius normalization).
+        kernels_for_cca  : dict of processed per-kernel matrices (after sqrt / Frobenius normalization);
+                           its keys are the kernel names.
         n_cells, p_gene  : dimensions of X2_np.
     """
     # expression filtering and standardization
@@ -56,6 +61,7 @@ def prepare_for_cca(
     return dict(
         K=K,
         kernels_for_cca=kernels_for_cca,
+        cell_names=log_expr.index.astype(str).to_numpy(),
         n_cells=n_cells,
         p_gene=p_gene,
         **expression,
