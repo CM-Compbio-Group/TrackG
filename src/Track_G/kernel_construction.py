@@ -1,10 +1,11 @@
 """kernel_construction.py
 Utilities for building kernel matrices from common biological data types.
 
-Two constructors are provided:
+Three constructors are provided:
 
     kernel_from_newick      : lineage kernel from a Newick tree file (LCA depth).
     kernel_from_categorical : co-membership kernel from a categorical label vector.
+    kernel_from_continuous  : RBF kernel from continuously valued coordinates or features.
 
 All kernels are returned as (n, n) float64 ndarrays with unit diagonal where applicable.
 They can be passed directly to ``build_kernel_matrix`` in Track_G for use in CCA.
@@ -14,6 +15,7 @@ Usage
 >>> from kernel_construction import kernel_from_newick, kernel_from_categorical
 >>> K_lineage  = kernel_from_newick("tree.nwk", cell_names)
 >>> K_location = kernel_from_categorical(cell_metadata["SubTumor"])
+>>> K_spatial  = kernel_from_continuous(cell_metadata[["x", "y", "z"]])
 """
 
 from pathlib import Path
@@ -97,3 +99,39 @@ def kernel_from_categorical(
 
     B = pd.get_dummies(labels).to_numpy().astype(float)
     return B @ B.T
+
+def kernel_from_continuous(
+    coords: pd.DataFrame | np.ndarray,
+    sigma: float | None = None,
+) -> np.ndarray:
+    """Build an RBF kernel from continuously valued coordinates.
+
+    K[i, j] = exp(-||x_i - x_j||^2 / (2 * sigma^2))
+
+    Parameters
+    ----------
+    coords : (n, d) array or DataFrame of continuous features, e.g. spatial
+             coordinates (x, y, z). Each row is one cell.
+    sigma  : bandwidth parameter. If None (default), set to the median pairwise
+             distance (the median heuristic).
+
+    Returns
+    -------
+    K : (n, n) ndarray, dtype float64. Diagonal is always 1.
+    """
+    X = np.asarray(coords, dtype=float)
+    if X.ndim == 1:
+        X = X[:, None]
+
+    # pairwise squared distances
+    diff = X[:, None, :] - X[None, :, :]          # (n, n, d)
+    sq_dist = (diff ** 2).sum(axis=-1)             # (n, n)
+
+    if sigma is None:
+        # median heuristic: sigma = median of all pairwise distances
+        sigma = float(np.sqrt(np.median(sq_dist[sq_dist > 0])))
+        if sigma == 0.0:
+            raise ValueError("All pairwise distances are zero; cannot set sigma.")
+
+    K = np.exp(-sq_dist / (2.0 * sigma ** 2))
+    return K

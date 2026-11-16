@@ -881,7 +881,7 @@ def save_pa_cca_outputs(path, result: Dict[str, Any], data, pa: Optional[PAResul
     components = pd.Index(result["cca_diagnostics"]["component"], name="component")
     genes = pd.Index(np.asarray(data["valid_genes"], dtype=str), name="gene")
     cells = pd.Index(np.asarray(data["cell_names"], dtype=str), name="cell")
-    kernel_names = [str(name) for name in data["KERNEL_NAMES"]]
+    kernel_names = list(data["kernels_for_cca"].keys())
     kernel_cells = pd.MultiIndex.from_product([kernel_names, cells], names=["kernel", "cell"])
 
     out = {
