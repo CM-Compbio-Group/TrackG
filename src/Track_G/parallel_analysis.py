@@ -25,7 +25,7 @@ Usage
 >>> pa.summary                                       # one-row DataFrame
 >>> fig = plot_parallel_analysis(pa, path="parallel_analysis.png")
 
-Each per-null result is a dict with keys ``kind, singular_values, threshold, null_singular_values,
+``pa.result`` is a dict with keys ``kind, singular_values, threshold, null_singular_values,
 above_threshold, n_components, n_above, quantile, n_permutations, at_bound``.
 """
 from __future__ import annotations
@@ -133,7 +133,7 @@ expression_pa = pa_expression
 @dataclass
 class PAResult:
     """Output of run_parallel_analysis.  ``J`` is the number of components to fit."""
-    J: int                                   # selected by `selector`, clipped to [1, j_cap]
+    J: int                                   # selected by the PA null, clipped to [1, j_cap]
     j_cap: Optional[int]
     null: str
     result: dict 
@@ -190,9 +190,9 @@ def run_parallel_analysis(X_std, K, null: str = "entrywise",
 
 
 def plot_parallel_analysis(pa: PAResult, path=None):
-    """One panel per null: observed spectrum, permutation threshold, null median and the selected J.
+    """Observed spectrum, permutation threshold, null median and the selected J of the PA null.
 
-    The selector's panel comes first.  Returns the figure (and saves it if `path` is given).
+    Returns the figure (and saves it if `path` is given).
     """
     import matplotlib.pyplot as plt
 

@@ -399,7 +399,7 @@ def _paired_pearson(U: np.ndarray, V: np.ndarray) -> np.ndarray:
 def fit_witten_nonnegative_cca(
     K: np.ndarray,
     X2_np: np.ndarray,
-    KERNEL_NAMES: Sequence[str],
+    KERNEL_NAMES: Optional[Sequence[str]] = None,
     *,
     J: int = 18,
     c_alpha: Optional[float] = None,
@@ -419,9 +419,15 @@ def fit_witten_nonnegative_cca(
     uses the nonbinding maxima sqrt(number of features).  Multiple restarts and
     invalid-component rejection are numerical robustness additions; each block
     update itself is the paper's equation (8).
+    ``KERNEL_NAMES`` is optional: without it the number of kernels is K.shape[1] / n_cells and the
+    kernels are named K_0, K_1, ... (only used to label the outputs).
     """
     K = np.asarray(K, dtype=float)
     X2_np = np.asarray(X2_np, dtype=float)
+    if KERNEL_NAMES is None:                         # infer the kernel blocks from K = [K_1 ... K_m] (n x mn)
+        if K.ndim != 2 or K.shape[0] == 0 or K.shape[1] % K.shape[0]:
+            raise ValueError("K must be (n_cells, n_kernels * n_cells) when KERNEL_NAMES is not given.")
+        KERNEL_NAMES = [f"K_{i}" for i in range(K.shape[1] // K.shape[0])]
     kernel_names = np.asarray(KERNEL_NAMES, dtype=object)
 
     if K.ndim != 2 or X2_np.ndim != 2:
@@ -870,8 +876,8 @@ def save_pa_cca_outputs(path, result: Dict[str, Any], data, pa: Optional[PAResul
     Components are labelled C_0, C_1, ... as in ``cca_diagnostics["component"]``; ``out["A"].to_numpy()``
     gives back the A matrix.
 
-    ``data`` is the dict returned by the dataset loader.  It needs ``valid_genes``, ``cell_names`` and
-    ``KERNEL_NAMES`` and uses ``cell_metadata``, ``gene_frac_expr``, ``log_exp_filtered``,
+    ``data`` is the dict returned by ``prepare_for_cca``.  It needs ``valid_genes``, ``cell_names`` and
+    ``kernels_for_cca`` (its keys name the kernels) and uses ``cell_metadata``, ``gene_frac_expr``, ``log_exp_filtered``,
     ``min_expr_frac`` and ``frobenius_normalize`` when present.  ``settings`` (e.g. the keyword
     arguments given to ``fit_witten_nonnegative_cca``) is stored under ``settings["cca"]``.
     """
@@ -952,24 +958,31 @@ def summarize_cca(
     Parameters
     ----------
     result : dict returned by fit_witten_nonnegative_cca.
-    data   : dict returned by prepare_for_cca (needs valid_genes, KERNEL_NAMES).
-    top_n  : number of top genes to return per component, ranked by W descending.
-             If None (default), return all genes with W > w_threshold.
+    data   : dict returned by prepare_for_cca (needs valid_genes, cell_names, kernels_for_cca;
+             the kernel names are the keys of kernels_for_cca).
+    top_n  : number of top genes to return per component (ranked by W) and per kernel (ranked by
+             gene_kernel). If None (default), return all genes with W > w_threshold per component and
+             all genes per kernel.
     w_threshold : minimum W to include a gene in top_genes (default 1e-4).
 
     Returns
     -------
-    dict with keys:
-        latent_component_expression : DataFrame (n_cells, J), latent component expression K @ A.
-        gene_component_expression   : DataFrame (n_cells, J), gene component expression X @ W2.
-        kernel_attr : DataFrame (n_kernels, J), kernel attribution per component
-                      (columns sum to 1).
-        gene_kernel : DataFrame (n_genes, n_kernels), gene-kernel association score.
+    dict with keys (names as in the paper's Methods, "Computing relatedness score"):
+        latent_component_expression   : DataFrame (n_cells, J), K @ A, the latent component expression
+                                        of every cell (paper: latent component expression).
+        observed_component_expression : DataFrame (n_cells, J), X @ W2, the observed expression projected
+                                        on every component (the cell scores Y w_j).
+        kernel_attr : DataFrame (n_kernels, J), p_kj = ||alpha_j^(k)|| / sum_l ||alpha_j^(l)||, the relative
+                      relatedness of attribute (kernel) k to component j; columns sum to 1.
+        gene_kernel : DataFrame (n_genes, n_kernels), s_gk = sum_j p_kj w_gj, the relatedness of
+                      attribute (kernel) k to gene g.
         top_genes   : dict mapping component name -> DataFrame of top genes with
                       columns [gene, W, rank], sorted by W descending.
+        top_genes_by_kernel : dict mapping kernel name -> DataFrame [gene, score, rank] of the genes
+                      ranked by gene_kernel (s_gk) descending, i.e. the gene ranking of each attribute.
         diagnostics : cca_diagnostics DataFrame from the fit.
     """
-    kernel_names = [str(k) for k in data["KERNEL_NAMES"]]
+    kernel_names = [str(k) for k in data["kernels_for_cca"]]     # dict keys, as in save_pa_cca_outputs
     valid_genes = list(data["valid_genes"])
     J = result["W2_matrix"].shape[1]
     components = [f"C_{j}" for j in range(J)]
@@ -980,7 +993,7 @@ def summarize_cca(
         index=data["cell_names"],
         columns=components,
     )
-    gene_component_expression = pd.DataFrame(
+    observed_component_expression = pd.DataFrame(
         result["V_score_matrix"],
         index=data["cell_names"],
         columns=components,
@@ -1011,11 +1024,21 @@ def summarize_cca(
             columns=["gene", "W", "rank"],
         )
 
+    # gene ranking of each attribute (kernel) by s_gk, descending; stable sort keeps ties in gene order
+    top_genes_by_kernel = {}
+    for k in kernel_names:
+        ranked = gene_kernel[k].sort_values(ascending=False, kind="stable")
+        if top_n is not None:
+            ranked = ranked.iloc[:top_n]
+        top_genes_by_kernel[k] = pd.DataFrame(
+            {"gene": ranked.index, "score": ranked.to_numpy(), "rank": np.arange(1, len(ranked) + 1)})
+
     return dict(
         latent_component_expression=latent_component_expression,
-        gene_component_expression=gene_component_expression,
+        observed_component_expression=observed_component_expression,
         kernel_attr=kernel_attr,
         gene_kernel=gene_kernel,
         top_genes=top_genes,
+        top_genes_by_kernel=top_genes_by_kernel,
         diagnostics=result["cca_diagnostics"],
     )

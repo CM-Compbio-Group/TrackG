@@ -12,7 +12,7 @@ They can be passed directly to ``build_kernel_matrix`` in Track_G for use in CCA
 
 Usage
 -----
->>> from kernel_construction import kernel_from_newick, kernel_from_categorical
+>>> from Track_G import kernel_from_newick, kernel_from_categorical, kernel_from_continuous
 >>> K_lineage  = kernel_from_newick("tree.nwk", cell_names)
 >>> K_location = kernel_from_categorical(cell_metadata["SubTumor"])
 >>> K_spatial  = kernel_from_continuous(cell_metadata[["x", "y", "z"]])
@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 from Bio import Phylo
 from scipy import sparse
+from scipy.spatial.distance import pdist, squareform
 
 def kernel_from_newick(
     path: str | Path,
@@ -123,15 +124,16 @@ def kernel_from_continuous(
     if X.ndim == 1:
         X = X[:, None]
 
-    # pairwise squared distances
-    diff = X[:, None, :] - X[None, :, :]          # (n, n, d)
-    sq_dist = (diff ** 2).sum(axis=-1)             # (n, n)
+    # pairwise squared distances, computed once per pair (no (n, n, d) intermediate array)
+    sq_condensed = pdist(X, "sqeuclidean")         # (n * (n - 1) / 2,)
+    sq_dist = squareform(sq_condensed)             # (n, n)
 
     if sigma is None:
         # median heuristic: sigma = median of all pairwise distances
-        sigma = float(np.sqrt(np.median(sq_dist[sq_dist > 0])))
-        if sigma == 0.0:
+        positive = sq_condensed[sq_condensed > 0]
+        if positive.size == 0:
             raise ValueError("All pairwise distances are zero; cannot set sigma.")
+        sigma = float(np.sqrt(np.median(positive)))
 
     K = np.exp(-sq_dist / (2.0 * sigma ** 2))
     return K

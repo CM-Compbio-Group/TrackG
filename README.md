@@ -25,12 +25,12 @@ git clone https://github.com/CM-Compbio-Group/TrackG.git
 cd TrackG
 conda create -n trackg python=3.10
 conda activate trackg
-pip install numpy scipy pandas matplotlib seaborn anndata biopython networkx threadpoolctl
+pip install numpy scipy pandas matplotlib seaborn anndata scanpy biopython networkx threadpoolctl
 pip install jupyter jupyterlab ipykernel
 python -m ipykernel install --user --name trackg --display-name trackg
 ```
 
-`Track-G` is a Python package in `src/Track_G/` and needs no further installation: add `src/` to the Python path, as the tutorial notebooks do. Tested with Python 3.10, numpy 2.2, scipy 1.15, pandas 2.3, matplotlib 3.10, anndata 0.11 and biopython 1.85.
+`Track-G` is a Python package in `src/Track_G/` and needs no further installation: add `src/` to the Python path, as the tutorial notebooks do. Tested with Python 3.10, numpy 2.2, scipy 1.15, pandas 2.3, matplotlib 3.10, anndata 0.11, scanpy 1.11 and biopython 1.85.
 
 ## How to Use
 
@@ -43,29 +43,36 @@ python -m ipykernel install --user --name trackg --display-name trackg
 ```python
 import sys
 sys.path.insert(0, "src")
-from Track_G import (filter_and_standardize_expression, build_kernel_matrix, run_parallel_analysis,
-                     fit_witten_nonnegative_cca, gene_kernel_scores)
+from Track_G import (kernel_from_newick, kernel_from_categorical, kernel_from_continuous, prepare_for_cca,
+                     run_parallel_analysis, fit_witten_nonnegative_cca, summarize_cca)
 
-expr = filter_and_standardize_expression(log_exp)              # cells x genes log expression
-K, _ = build_kernel_matrix(kernels, kernel_names)               # K = [K_1^1/2 | ... | K_M^1/2]
-J = run_parallel_analysis(expr["X2_np"], K, nulls=("entrywise",)).J
-fit = fit_witten_nonnegative_cca(K=K, X2_np=expr["X2_np"], KERNEL_NAMES=kernel_names, J=J)
-p, s = gene_kernel_scores(fit["W2_matrix"], fit["all_scores"], expr["valid_genes"], kernel_names)
+# log_exp: cells x genes DataFrame of log1p-normalized expression, e.g. adata.to_df() after scanpy's
+# sc.pp.normalize_total(adata, target_sum=1e4) and sc.pp.log1p(adata); kernel rows follow its cell order
+kernels = {"lineage": kernel_from_newick("tree.nwk", log_exp.index),          # lineage tree
+           "cell type": kernel_from_categorical(cell_metadata["cell_type"]),  # categorical attribute
+           "space": kernel_from_continuous(cell_metadata[["x", "y"]])}        # continuous attribute
+data = prepare_for_cca(log_exp, kernels)            # filtered + standardized genes, K = [K_1^1/2 | ... | K_M^1/2]
+pa = run_parallel_analysis(data["X2_np"], data["K"])
+J = pa.J                                            # number of components inferred by parallel analysis
+fit = fit_witten_nonnegative_cca(K=data["K"], X2_np=data["X2_np"], J=J)
+res = summarize_cca(fit, data)                      # dict of labelled DataFrames
 ```
-`p` is the relatedness of every component to every attribute, and `s` the score of every gene for every attribute.
+`res["kernel_attr"]` is the relative relatedness $p_{kj}$ of every component to every attribute, `res["gene_kernel"]` the relatedness $s_{gk}$ of every gene to every attribute, `res["latent_component_expression"]` the latent component expression $KA$ of every cell, and `res["top_genes_by_kernel"]` the gene ranking of every attribute.
 
 ## Repository structure
 
 ```
-src/Track_G/              the Track-G package
-    parallel_analysis.py  number of components J (permutation null on K^T X)
-    CCA.py                nonnegative sparse multi-kernel CCA, kernel concatenation (K^1/2), gene scores, saving
-    gene_filtering.py     gene filter + per-gene standardization
-utils/                    wrappers of other methods (ALPINE, CoGAPS, Hotspot); not used by the tutorials
+src/Track_G/                the Track-G package
+    kernel_construction.py  kernels from a Newick tree, a categorical vector or continuous values
+    preprocess.py           prepare_for_cca: expression + kernels -> everything needed for PA and CCA
+    parallel_analysis.py    number of components J (permutation null on K^T X)
+    CCA.py                  nonnegative sparse multi-kernel CCA, kernel concatenation (K^1/2), summarize_cca, saving
+    gene_filtering.py       gene filter + per-gene standardization
+utils/                      wrappers of other methods (ALPINE, CoGAPS, Hotspot); not used by the tutorials
 tutorial/
-    data/kptracer/        raw KP-Tracer data of tumor family 3454_Lkb1_All (counts + lineage tree)
-    kptracer/             data loader (expression, kernels) and evaluation / figures of the KP-Tracer analysis
-    simulation/           simulated data and evaluation / figures of the simulation
-    kptracer.ipynb        Track-G on KP-Tracer
-    simulation.ipynb      Track-G on simulated data
+    data/kptracer/          raw KP-Tracer data of tumor family 3454_Lkb1_All (counts + lineage tree)
+    kptracer/               negative controls and figures of the KP-Tracer analysis
+    simulation/             simulated data and evaluation / figures of the simulation
+    kptracer.ipynb          Track-G on KP-Tracer
+    simulation.ipynb        Track-G on simulated data
 ```
