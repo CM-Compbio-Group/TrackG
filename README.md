@@ -25,12 +25,12 @@ git clone https://github.com/CM-Compbio-Group/TrackG.git
 cd TrackG
 conda create -n trackg python=3.10
 conda activate trackg
-pip install numpy scipy pandas matplotlib seaborn anndata biopython networkx threadpoolctl
+pip install numpy scipy pandas matplotlib seaborn anndata scanpy biopython networkx threadpoolctl
 pip install jupyter jupyterlab ipykernel
 python -m ipykernel install --user --name trackg --display-name trackg
 ```
 
-`Track-G` is a Python package in `src/Track_G/` and needs no further installation: add `src/` to the Python path, as the tutorial notebooks do. Tested with Python 3.10, numpy 2.2, scipy 1.15, pandas 2.3, matplotlib 3.10, anndata 0.11 and biopython 1.85.
+`Track-G` is a Python package in `src/Track_G/` and needs no further installation: add `src/` to the Python path, as the tutorial notebooks do. Tested with Python 3.10, numpy 2.2, scipy 1.15, pandas 2.3, matplotlib 3.10, anndata 0.11, scanpy 1.11 and biopython 1.85.
 
 ## How to Use
 
@@ -46,7 +46,8 @@ sys.path.insert(0, "src")
 from Track_G import (kernel_from_newick, kernel_from_categorical, kernel_from_continuous, prepare_for_cca,
                      run_parallel_analysis, fit_witten_nonnegative_cca, summarize_cca)
 
-# log_exp: cells x genes DataFrame of log1p-normalized expression; kernel rows follow its cell order
+# log_exp: cells x genes DataFrame of log1p-normalized expression, e.g. adata.to_df() after scanpy's
+# sc.pp.normalize_total(adata, target_sum=1e4) and sc.pp.log1p(adata); kernel rows follow its cell order
 kernels = {"lineage": kernel_from_newick("tree.nwk", log_exp.index),          # lineage tree
            "cell type": kernel_from_categorical(cell_metadata["cell_type"]),  # categorical attribute
            "space": kernel_from_continuous(cell_metadata[["x", "y"]])}        # continuous attribute

@@ -9,6 +9,7 @@ dependencies:
   - matplotlib
   - seaborn
   - anndata
+  - scanpy
   - biopython
   - networkx
   - threadpoolctl
